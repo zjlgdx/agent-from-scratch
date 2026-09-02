@@ -2,9 +2,9 @@
 
 ## 一、裸循环直接上生产会遇到什么
 
-EP0 我们写了 136 行裸循环，EP2 跑通了任务队列。裸循环能转，但真拿去干复杂任务，有三个地方会先出问题：
+裸循环能把流程跑通，但真拿去干复杂的生产任务，有三个地方会最先出问题：
 
-1. **输出失控**：工具返回巨量输出（比如读一个几百 KB 的日志、扫一遍目录）瞬间就是几万 Token，TPM 和上下文当场撑爆，EP2 真实踩过。
+1. **输出失控**：工具返回巨量输出（如读取数百 KB 日志或全量扫描目录）瞬间产生数万 Token，超出 TPM 限额与上下文窗口，直接引发请求中断（EP2 真实踩过）。
 2. **路径越界**：模型只是在生成文本参数，它生成 `path: "../../etc/passwd"`，裸循环直接调 `fs`，就读出去了。
 3. **死循环**：裸循环一旦启动就是个黑盒 `while (true)`。模型理解偏了，或者在两三个工具间打转，宿主没有中途插话纠偏（Steer）的机制，人在终端前只能强杀进程。
 
@@ -19,7 +19,7 @@ EP0 的裸循环是把 API 和工具串起来的发动机；Harness 做的是给
 | 本课机制 | Pi 里的对应物 |
 | :--- | :--- |
 | 输出熔断 `truncateOutput` | `pi-coding-agent/dist/core/tools/truncate.js`：`DEFAULT_MAX_LINES = 2000`、`DEFAULT_MAX_BYTES = 50KB`，截断后在结果里标明 `truncatedBy: "lines" \| "bytes"` |
-| 路径沙箱 `resolveSafePath` | Pi 的 `read` 工具本身不做 cwd 沙箱；它在 `core/tools/read.js` 里判断路径是否落在自己的文档目录时，用的是 `path.relative` 看结果是否以 `..` 开头，这一招可以借来做沙箱，别拿 `startsWith` 比前缀 |
+| 路径沙箱 `resolveSafePath` | Pi 的 `read` 工具本身不限定 cwd 沙箱；其在 `core/tools/read.js` 中判断路径归属时，通过 `path.relative` 检查相对路径是否以 `..` 开头。沙箱同样采用这一判定逻辑，避免使用 `startsWith` 前缀比对带来的越界漏洞 |
 | 上下文修剪 `pruneContext` | `harness/compaction/compaction.js`：`shouldCompact`、`keepRecentTokens`、`findTurnStartIndex`，超预算时让模型写摘要（Summary）替换旧历史 |
 | Steer / FollowUp | `harness/agent-harness.js`：`steerQueue`、`followUpQueue`、`nextTurnQueue`，默认 `one-at-a-time`，作为 `getSteeringMessages` / `getFollowUpMessages` 回调交给内层循环，在 Turn 边界排空 |
 
@@ -32,9 +32,9 @@ EP0 的裸循环是把 API 和工具串起来的发动机；Harness 做的是给
 ### 1. 路径沙箱（resolveSafePath）
 我们把目标路径限制到 `target/` 目录下，解析出的绝对路径不在 `target/` 下面，就拦下来，抛 `[Security Sandbox Violation]`。
 
-**我第一版写错了**：用 `startsWith(SANDBOX_DIR)` 比前缀，`../target-backup/x` 解析出来同样以 `.../target` 开头，能穿过去。现在改用 `path.relative` 看结果是不是以 `..` 开头，Pi 判断路径归属用的也是这一招。
+**前缀比对陷阱**：实现路径沙箱时不能使用 `startsWith(SANDBOX_DIR)` 进行简单的字符串匹配。若沙箱目录同级存在命名重叠的路径（如 `target-backup/`），传入 `../target-backup/x` 解析出的绝对路径同样以 `.../target` 开头，就能轻易绕过前缀检查。可靠的做法是使用 `path.relative(SANDBOX_DIR, resolved)`，只要返回结果以 `..` 开头或为绝对路径，即判定为越界；Pi 在判断路径归属时采用的也是这一校验逻辑。
 
-**`bash` 工具没有沙箱**。它只是把工作目录（cwd）设成 `target/`，`cat ../../AGENTS.md` 照样能读出来。留着它有两个用处：截断后模型有办法用 `sed`、`grep` 分段读；你可以亲手试出“工作目录不等于沙箱”。Pi 的 `bash` 工具也只设工作目录，真正的隔离要靠容器这类外层手段。
+**`bash` 工具没有沙箱**。它只是把工作目录（cwd）设成 `target/`，`cat ../../AGENTS.md` 照样能读出来。保留该工具有两重考量：一是截断后模型仍可通过 `sed`、`grep` 分段读取；二是用以展示“工作目录不等于沙箱”这一工程边界。Pi 的 `bash` 工具也只设工作目录，真正的隔离要靠容器这类外层手段。
 
 模型只是个文本生成器，不能指望它做合规判断。安全边界得由宿主来守，而宿主自己也会写错，要拿 `../` 这种输入实际去试。
 
@@ -49,7 +49,7 @@ console.log(`[result preview] ${result.split("\n")[0]}...`);
 ```
 而包含末尾截断标记的完整文本已原样塞入 `messages` 数组交给了模型。模型在下一步改用 `sed` / `grep` 分段读，说明它确实收到了这句截断提示。
 
-顺带说一下我给工具加的 `replay` 标注。这不是 OpenAI 协议字段，Pi 里也没有这个概念。只读工具标 `replay: "safe"`，写入和命令执行标 `replay: "never"`，发请求前在本地剥掉（`agent.mjs:198`）。本课只把它打印出来，没有任何逻辑消费它。真正的 Harness 在崩溃恢复或重试时要靠它决定能不能重放：读操作幂等可以重跑；写操作有不可逆副作用，不能盲目跑第二遍，只能补一条“已中断”的合成结果。
+关于工具定义中的 `replay` 标注：该字段并非 OpenAI 协议规范，Pi 内部亦无此概念。只读工具标 `replay: "safe"`，写入和命令执行标 `replay: "never"`，发请求前在本地剥掉（`agent.mjs:198`）。本课只把它打印出来，没有任何逻辑消费它。真正的 Harness 在崩溃恢复或重试时要靠它决定能不能重放：读操作幂等可以重跑；写操作有不可逆副作用，不能盲目跑第二遍，只能补一条“已中断”的合成结果。
 
 ---
 
@@ -72,15 +72,15 @@ Token 一下少了很多，不会再撞 TPM 和 413，而服务端看到的历�
 
 上下文只追加（Append-only），不在中间改。中间一改，服务端按历史前缀建的 KV Cache 就命不中了，下一次请求得重算；能省多少、有没有缓存折扣，各家不一样。
 
-看 `agent.mjs:227-236`：指令不是在工具跑的一瞬间打断进程，而是放进 `steeringQueue`，在下一个 Turn 开始前的 Checkpoint，作为一条标准的 `role: "user"` 消息追加到末尾。在消息前加上 `[Steering Notice / Human Interruption]` 标签，并在系统提示词里明确声明了它的最高优先级。带着 `DEMO_STEER=1` 启动，输入“先读一下 data.log，然后逐行分析每个请求耗时”，模型第一轮读完日志后插话生效，第二轮立刻放弃长篇大论，直接给出一句话精简结论。
+在 `agent.mjs:227-236` 中，指令不是在工具跑的一瞬间打断进程，而是放进 `steeringQueue`，在下一个 Turn 开始前的 Checkpoint，作为一条标准的 `role: "user"` 消息追加到末尾。在消息前加上 `[Steering Notice / Human Interruption]` 标签，并在系统提示词里明确声明了它的最高优先级。带着 `DEMO_STEER=1` 启动，输入“先读一下 data.log，然后逐行分析每个请求耗时”，模型第一轮读完日志后插话生效，第二轮立刻放弃长篇大论，直接给出一句话精简结论。
 
 ### 2. 中途插话（Steer）与顺手接力（FollowUp）
-Steer 和 FollowUp 一硬一软。Steer 在每个 Turn 之前检查，队列里有就立刻注入。FollowUp 要等模型干完当前主任务（没有发起 `tool_calls`）、而且没有 Steer 时才消费（`agent.mjs:252-261`）。FollowUp 的用处是不用傻等模型跑完 10 步工具再敲下一句：运行中打 `/followup 顺便把结果存到 done.txt`，Agent 做完上一段接着干。
+Steer 和 FollowUp 一硬一软。Steer 在每个 Turn 之前检查，队列里有就立刻注入。FollowUp 要等模型干完当前主任务（没有发起 `tool_calls`）、而且没有 Steer 时才消费（`agent.mjs:252-261`）。FollowUp 的机制在于无需等待模型执行完当前多步工具调用再行输入：在任务运行期间即可输入 `/followup 顺便把结果存到 done.txt`，Agent 会在主任务收尾后自动衔接处理。
 
-第一版交互式命令行（REPL）用 `for await` 逐行读输入，`await runHarnessTurn` 期间根本读不到键盘，`/steer` 和 `/followup` 只能在两次运行之间生效，“中途”其实是假的。现在改成监听 `line` 事件加一个 `busy` 标记（`agent.mjs:312-329`）：模型跑的时候敲 `/steer`、`/followup` 立刻入队，下一个 Checkpoint 消费；其他输入会被拒掉。`DEMO_STEER=1` 仍然保留，作为不靠手速的确定性演示。
+交互式终端（REPL）若采用 `for await` 逐行读取输入，在 `await runHarnessTurn` 阻塞期间将无法捕获键盘输入，导致 `/steer` 与 `/followup` 只能退化为轮次间隔生效，失去“中途拦截”的能力。重构后的方案改用监听 `line` 事件并配合 `busy` 状态标记（`agent.mjs:312-329`）：在模型执行期间输入的 `/steer` 与 `/followup` 会即刻进入调度队列，并在最近的 Checkpoint 被消费；其他常规输入则在忙碌时被拦截。保留 `DEMO_STEER=1` 环境变量，则用作无需人工按键介入的确定性演示。
 
 ### 3. 会话事务回滚（Session Rollback）
-看入口处的 `agent.mjs:335-343`：
+入口处的 `agent.mjs:335-343` 显示：
 ```js
 const mark = sessionMessages.length;
 try {
@@ -90,7 +90,7 @@ try {
 }
 ```
 
-网络超时或 API 报 500/400 时，如果让半截消息留在上下文里，后面的对话就全废了。一行 `sessionMessages.length = mark`，就把整轮会话回滚到了开始之前。
+遭遇网络超时或 API 报错时，若未闭合的半截消息残留在上下文内，后续会话将因协议破坏而无法继续。通过执行 `sessionMessages.length = mark`，即可将整轮会话精确回滚至执行前的干净状态。
 
 ---
 
