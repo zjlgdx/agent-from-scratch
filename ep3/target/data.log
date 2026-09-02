@@ -1,0 +1,72 @@
+line 1: system initialized
+line 2: connection pool allocated (size=50)
+line 3: worker-0 started
+line 4: worker-1 started
+line 5: worker-2 started
+line 6: worker-3 started
+line 7: cache warmup starting...
+line 8: preloading user index table
+line 9: preloading session token cache
+line 10: cache warmup completed in 42ms
+line 11: HTTP server listening on port 8080
+line 12: metrics exporter listening on port 9090
+line 13: healthcheck OK (status=200)
+line 14: route registered: GET /api/v1/health
+line 15: route registered: GET /api/v1/users
+line 16: route registered: POST /api/v1/users
+line 17: route registered: GET /api/v1/stats
+line 18: [info] background cron registered: cleanup_sessions
+line 19: [info] background cron registered: sync_metrics
+line 20: request 1001: GET /api/v1/health -> 200 (1ms)
+line 21: request 1002: GET /api/v1/users -> 200 (14ms)
+line 22: request 1003: POST /api/v1/users -> 201 (25ms)
+line 23: request 1004: GET /api/v1/stats -> 200 (8ms)
+line 24: request 1005: GET /api/v1/health -> 200 (1ms)
+line 25: request 1006: GET /api/v1/users -> 200 (12ms)
+line 26: request 1007: GET /api/v1/stats -> 200 (6ms)
+line 27: request 1008: GET /api/v1/health -> 200 (1ms)
+line 28: request 1009: POST /api/v1/users -> 201 (30ms)
+line 29: request 1010: GET /api/v1/users -> 200 (15ms)
+line 30: request 1011: GET /api/v1/stats -> 200 (7ms)
+line 31: request 1012: GET /api/v1/health -> 200 (1ms)
+line 32: request 1013: GET /api/v1/users -> 200 (11ms)
+line 33: request 1014: GET /api/v1/users -> 200 (13ms)
+line 34: request 1015: GET /api/v1/stats -> 200 (5ms)
+line 35: request 1016: GET /api/v1/health -> 200 (1ms)
+line 36: request 1017: POST /api/v1/users -> 201 (28ms)
+line 37: request 1018: GET /api/v1/users -> 200 (12ms)
+line 38: request 1019: GET /api/v1/stats -> 200 (9ms)
+line 39: request 1020: GET /api/v1/health -> 200 (1ms)
+line 40: [warn] connection pool utilization reached 65%
+line 41: request 1021: GET /api/v1/users -> 200 (18ms)
+line 42: request 1022: GET /api/v1/users -> 200 (16ms)
+line 43: request 1023: GET /api/v1/stats -> 200 (8ms)
+line 44: request 1024: GET /api/v1/health -> 200 (1ms)
+line 45: request 1025: POST /api/v1/users -> 201 (33ms)
+line 46: request 1026: GET /api/v1/users -> 200 (14ms)
+line 47: request 1027: GET /api/v1/stats -> 200 (7ms)
+line 48: request 1028: GET /api/v1/health -> 200 (1ms)
+line 49: request 1029: GET /api/v1/users -> 200 (13ms)
+line 50: request 1030: GET /api/v1/stats -> 200 (8ms)
+line 51: request 1031: GET /api/v1/health -> 200 (1ms)
+line 52: request 1032: POST /api/v1/users -> 201 (27ms)
+line 53: request 1033: GET /api/v1/users -> 200 (15ms)
+line 54: request 1034: GET /api/v1/stats -> 200 (6ms)
+line 55: request 1035: GET /api/v1/health -> 200 (1ms)
+line 56: request 1036: GET /api/v1/users -> 200 (12ms)
+line 57: request 1037: GET /api/v1/stats -> 200 (8ms)
+line 58: request 1038: GET /api/v1/health -> 200 (1ms)
+line 59: request 1039: POST /api/v1/users -> 201 (31ms)
+line 60: [error] database query timeout on /api/v1/stats: query took 502ms
+line 61: request 1040: GET /api/v1/stats -> 504 (502ms)
+line 62: request 1041: GET /api/v1/health -> 200 (1ms)
+line 63: request 1042: GET /api/v1/users -> 200 (15ms)
+line 64: request 1043: GET /api/v1/stats -> 200 (9ms)
+line 65: request 1044: GET /api/v1/health -> 200 (1ms)
+line 66: request 1045: POST /api/v1/users -> 201 (29ms)
+line 67: request 1046: GET /api/v1/users -> 200 (13ms)
+line 68: request 1047: GET /api/v1/stats -> 200 (7ms)
+line 69: request 1048: GET /api/v1/health -> 200 (1ms)
+line 70: request 1049: GET /api/v1/users -> 200 (14ms)
+line 71: request 1050: GET /api/v1/stats -> 200 (8ms)
+line 72: [summary] server processed 50 requests successfully, 1 failed.
